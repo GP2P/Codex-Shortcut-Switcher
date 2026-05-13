@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Callable, Dict, Iterable, List, Mapping, Optional
 from urllib import error, request
 
 
@@ -23,6 +23,7 @@ ALIAS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 CODEX_USER_AGENT = "codex-cli/1.0.0"
 DEFAULT_STORE_DIR = ".codex-shortcut-switcher"
+EXPIRED_ACCESS_TOKEN_MESSAGE = "access token expired; switch or sign in again to refresh safely"
 
 
 class ConfigError(Exception):
@@ -135,6 +136,34 @@ class CodexAliasStore:
             for account in accounts:
                 shutil.rmtree(account.codex_home, ignore_errors=True)
         return accounts
+
+    def remove_expired(
+        self,
+        confirm: bool = False,
+        delete_homes: bool = False,
+        usage_checker: Optional[Callable[[AccountAlias], str]] = None,
+    ) -> List[AccountAlias]:
+        if not confirm:
+            raise ConfigError("remove-expired requires --yes")
+        checker = fetch_usage_label if usage_checker is None else usage_checker
+        expired = []
+        kept = []
+        for account in self.list_accounts():
+            try:
+                checker(account)
+            except ConfigError as exc:
+                if is_expired_access_token_error(exc):
+                    expired.append(account)
+                else:
+                    kept.append(account)
+            else:
+                kept.append(account)
+
+        self._save_accounts(kept)
+        if delete_homes:
+            for account in expired:
+                shutil.rmtree(account.codex_home, ignore_errors=True)
+        return expired
 
     def get(self, alias: str) -> AccountAlias:
         alias = validate_alias(alias)
@@ -310,6 +339,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="also delete every stored alias CODEX_HOME directory",
     )
 
+    remove_expired = sub.add_parser("remove-expired", help="remove aliases with expired access tokens")
+    remove_expired.add_argument("--yes", action="store_true", help="confirm removing expired aliases")
+    remove_expired.add_argument(
+        "--delete-homes",
+        action="store_true",
+        help="also delete stored CODEX_HOME directories for expired aliases",
+    )
+
     return parser
 
 
@@ -384,6 +421,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             accounts = store.remove_all(confirm=args.yes, delete_homes=args.delete_homes)
             suffix = " and deleted homes" if args.delete_homes else ""
             print(f"removed {len(accounts)} aliases{suffix}")
+            return 0
+
+        if args.command == "remove-expired":
+            accounts = store.remove_expired(confirm=args.yes, delete_homes=args.delete_homes)
+            if accounts:
+                names = ", ".join(account.alias for account in accounts)
+                print(f"removed expired aliases: {names}")
+            else:
+                print("removed 0 expired aliases")
             return 0
 
         parser.error(f"unsupported command: {args.command}")
@@ -506,9 +552,13 @@ def fetch_usage_label(account: AccountAlias) -> str:
     except ConfigError as exc:
         if "HTTP 401" not in str(exc):
             raise
-        raise ConfigError("access token expired; switch or sign in again to refresh safely") from exc
+        raise ConfigError(EXPIRED_ACCESS_TOKEN_MESSAGE) from exc
     usage = parse_usage_summary(payload)
     return format_usage_label(usage)
+
+
+def is_expired_access_token_error(exc: ConfigError) -> bool:
+    return str(exc) == EXPIRED_ACCESS_TOKEN_MESSAGE
 
 
 def extract_usage_auth(auth_path: Path) -> UsageAuth:

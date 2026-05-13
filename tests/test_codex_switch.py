@@ -1,6 +1,8 @@
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -16,6 +18,7 @@ from codex_switch import (
     format_account_rows,
     format_usage_label,
     format_usage_labels_for_rows,
+    main,
     parse_usage_summary,
     resolve_alias_arg,
 )
@@ -153,6 +156,65 @@ class CodexAliasStoreTests(unittest.TestCase):
         self.assertEqual(self.store.alias_names(), [])
         self.assertFalse(personal.codex_home.exists())
         self.assertFalse(team.codex_home.exists())
+
+    def test_remove_expired_requires_explicit_confirmation(self):
+        source = self.root / "auth.json"
+        self.write_auth(source)
+        self.store.add_from_auth("personal", source)
+
+        with self.assertRaises(ConfigError):
+            self.store.remove_expired()
+
+        self.assertEqual(self.store.alias_names(), ["personal"])
+
+    def test_remove_expired_removes_only_expired_accounts_and_lists_names(self):
+        first = self.root / "first" / "auth.json"
+        second = self.root / "second" / "auth.json"
+        third = self.root / "third" / "auth.json"
+        self.write_auth(first, "first")
+        self.write_auth(second, "second")
+        self.write_auth(third, "third")
+        expired = self.store.add_from_auth("expired", first)
+        self.store.add_from_auth("fresh", second)
+        self.store.add_from_auth("api-key", third)
+
+        def usage_checker(account):
+            if account.alias == "expired":
+                raise ConfigError("access token expired; switch or sign in again to refresh safely")
+            if account.alias == "api-key":
+                raise ConfigError("api-key auth has no ChatGPT usage")
+            return "100% 5h | 50% 2d"
+
+        removed = self.store.remove_expired(
+            confirm=True,
+            delete_homes=True,
+            usage_checker=usage_checker,
+        )
+
+        self.assertEqual([account.alias for account in removed], ["expired"])
+        self.assertEqual(self.store.alias_names(), ["api-key", "fresh"])
+        self.assertFalse(expired.codex_home.exists())
+
+    def test_remove_expired_cli_lists_removed_alias_names(self):
+        first = self.root / "first" / "auth.json"
+        second = self.root / "second" / "auth.json"
+        self.write_auth(first, "first")
+        self.write_auth(second, "second")
+        self.store.add_from_auth("expired", first)
+        self.store.add_from_auth("fresh", second)
+
+        def usage_checker(account):
+            if account.alias == "expired":
+                raise ConfigError("access token expired; switch or sign in again to refresh safely")
+            return "100% 5h | 50% 2d"
+
+        output = StringIO()
+        with mock.patch("codex_switch.fetch_usage_label", side_effect=usage_checker):
+            with redirect_stdout(output):
+                code = main(["--store", str(self.store.root), "remove-expired", "--yes"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(output.getvalue(), "removed expired aliases: expired\n")
 
     def test_switch_alias_copies_auth_to_target_codex_home_with_backup(self):
         source = self.root / "source" / "auth.json"

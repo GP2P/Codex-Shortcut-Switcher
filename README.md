@@ -99,6 +99,12 @@ python3 codex_switch.py remove-all --yes
 # Remove every alias and delete all stored auth copies.
 python3 codex_switch.py remove-all --yes --delete-homes
 
+# Remove aliases whose access tokens are expired.
+python3 codex_switch.py remove-expired --yes
+
+# Remove expired aliases and delete their stored auth copies.
+python3 codex_switch.py remove-expired --yes --delete-homes
+
 # Run a command with CODEX_HOME pointed at one account profile.
 python3 codex_switch.py run <alias> -- codex
 
@@ -132,6 +138,7 @@ Stored files:
 
 You can override the state directory with `CODEX_SWITCH_HOME` or `--store`.
 By default, `remove` and `remove-all` only remove aliases from switcher metadata. Use `--delete-home` or `--delete-homes` when you also want to delete stored auth copies under the switcher state directory.
+`remove-expired --yes` checks accounts through the same usage lookup path as `list --usage` and prints the aliases it removed.
 
 ## Safety Notes
 
