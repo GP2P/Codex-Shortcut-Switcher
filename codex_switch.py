@@ -432,6 +432,8 @@ def format_usage_labels_for_rows(usage_by_alias: Mapping[str, str]) -> Dict[str,
     for alias, label in usage_by_alias.items():
         parts = split_usage_label(label)
         parts_by_alias[alias] = parts
+        if len(parts) != 4:
+            continue
         for index, part in enumerate(parts):
             widths[index] = max(widths[index], len(part))
 

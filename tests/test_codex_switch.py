@@ -215,6 +215,20 @@ class CodexAliasStoreTests(unittest.TestCase):
             },
         )
 
+    def test_usage_labels_keep_account_errors_unaligned(self):
+        usage_by_alias = {
+            "personal": "error: access token expired; switch or sign in again to refresh safely",
+            "team": "100% 5h | 50% 2d15h",
+        }
+
+        aligned = format_usage_labels_for_rows(usage_by_alias)
+
+        self.assertEqual(
+            aligned["personal"],
+            "error: access token expired; switch or sign in again to refresh safely",
+        )
+        self.assertEqual(aligned["team"], "100% 5h | 50% 2d15h")
+
     def test_format_account_rows_can_include_path_when_requested(self):
         source = self.root / "auth.json"
         self.write_auth(source)
