@@ -123,8 +123,18 @@ class CodexAliasStore:
             raise ConfigError(f"unknown alias: {alias}")
         self._save_accounts(accounts.values())
         if delete_home:
-            shutil.rmtree(account.codex_home)
+            shutil.rmtree(account.codex_home, ignore_errors=True)
         return account
+
+    def remove_all(self, confirm: bool = False, delete_homes: bool = False) -> List[AccountAlias]:
+        if not confirm:
+            raise ConfigError("remove-all requires --yes")
+        accounts = self.list_accounts()
+        self._save_accounts([])
+        if delete_homes:
+            for account in accounts:
+                shutil.rmtree(account.codex_home, ignore_errors=True)
+        return accounts
 
     def get(self, alias: str) -> AccountAlias:
         alias = validate_alias(alias)
@@ -292,6 +302,14 @@ def build_parser() -> argparse.ArgumentParser:
     remove.add_argument("alias", nargs="?")
     remove.add_argument("--delete-home", action="store_true", help="also delete the alias CODEX_HOME directory")
 
+    remove_all = sub.add_parser("remove-all", help="remove all aliases")
+    remove_all.add_argument("--yes", action="store_true", help="confirm removing every configured alias")
+    remove_all.add_argument(
+        "--delete-homes",
+        action="store_true",
+        help="also delete every stored alias CODEX_HOME directory",
+    )
+
     return parser
 
 
@@ -360,6 +378,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             account = store.remove(alias, delete_home=args.delete_home)
             suffix = " and deleted home" if args.delete_home else ""
             print(f"removed {account.alias}{suffix}")
+            return 0
+
+        if args.command == "remove-all":
+            accounts = store.remove_all(confirm=args.yes, delete_homes=args.delete_homes)
+            suffix = " and deleted homes" if args.delete_homes else ""
+            print(f"removed {len(accounts)} aliases{suffix}")
             return 0
 
         parser.error(f"unsupported command: {args.command}")

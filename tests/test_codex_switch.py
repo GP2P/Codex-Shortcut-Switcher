@@ -109,6 +109,51 @@ class CodexAliasStoreTests(unittest.TestCase):
 
         self.assertEqual(self.store.alias_names(), ["alpha", "beta"])
 
+    def test_remove_alias_removes_metadata_and_keeps_home_by_default(self):
+        source = self.root / "auth.json"
+        self.write_auth(source)
+        account = self.store.add_from_auth("personal", source)
+
+        removed = self.store.remove("personal")
+
+        self.assertEqual(removed.alias, "personal")
+        self.assertEqual(self.store.alias_names(), [])
+        self.assertTrue((account.codex_home / "auth.json").exists())
+
+    def test_remove_alias_can_delete_stored_home(self):
+        source = self.root / "auth.json"
+        self.write_auth(source)
+        account = self.store.add_from_auth("personal", source)
+
+        self.store.remove("personal", delete_home=True)
+
+        self.assertFalse(account.codex_home.exists())
+
+    def test_remove_all_requires_explicit_confirmation(self):
+        source = self.root / "auth.json"
+        self.write_auth(source)
+        self.store.add_from_auth("personal", source)
+
+        with self.assertRaises(ConfigError):
+            self.store.remove_all()
+
+        self.assertEqual(self.store.alias_names(), ["personal"])
+
+    def test_remove_all_can_delete_all_stored_homes(self):
+        first = self.root / "first" / "auth.json"
+        second = self.root / "second" / "auth.json"
+        self.write_auth(first, "first")
+        self.write_auth(second, "second")
+        personal = self.store.add_from_auth("personal", first)
+        team = self.store.add_from_auth("team", second)
+
+        removed = self.store.remove_all(confirm=True, delete_homes=True)
+
+        self.assertEqual([account.alias for account in removed], ["personal", "team"])
+        self.assertEqual(self.store.alias_names(), [])
+        self.assertFalse(personal.codex_home.exists())
+        self.assertFalse(team.codex_home.exists())
+
     def test_switch_alias_copies_auth_to_target_codex_home_with_backup(self):
         source = self.root / "source" / "auth.json"
         target = self.root / "target-codex"

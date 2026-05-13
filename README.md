@@ -87,6 +87,18 @@ python3 codex_switch.py aliases
 # Switch the default Codex login.
 python3 codex_switch.py switch <alias>
 
+# Remove one alias from the switcher.
+python3 codex_switch.py remove <alias>
+
+# Remove one alias and delete its stored auth copy.
+python3 codex_switch.py remove <alias> --delete-home
+
+# Remove every alias from the switcher.
+python3 codex_switch.py remove-all --yes
+
+# Remove every alias and delete all stored auth copies.
+python3 codex_switch.py remove-all --yes --delete-homes
+
 # Run a command with CODEX_HOME pointed at one account profile.
 python3 codex_switch.py run <alias> -- codex
 
@@ -119,6 +131,7 @@ Stored files:
 - `homes/<alias>/auth.json`: copied Codex auth file for that account.
 
 You can override the state directory with `CODEX_SWITCH_HOME` or `--store`.
+By default, `remove` and `remove-all` only remove aliases from switcher metadata. Use `--delete-home` or `--delete-homes` when you also want to delete stored auth copies under the switcher state directory.
 
 ## Safety Notes
 
